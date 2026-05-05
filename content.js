@@ -109,22 +109,25 @@ async function zip() {
 	albumName = albumName.pop() || albumName.pop();
 	let zipName = document.title + ' - ' + albumName;
 
-	// fetch each image as a blob and add directly to the ZIP (no base64 conversion)
+	// fetch each image via background.js (which bypasses CORS) as an ArrayBuffer,
+	// one at a time — avoids both the base64 overhead and the 64MB message limit
 	let failed = 0;
 	for (let i = 0; i < imgObjects.length; i++) {
 		const obj = imgObjects[i];
 		const num = i + 1;
 		setStatus(`Photo ${num} / ${imgObjects.length}`, '#eca142');
 		console.log(`pixieDownloader: (${num}/${imgObjects.length}) fetching ${obj.url}`);
-		try {
-			const response = await fetch(obj.url);
-			if (!response.ok) throw new Error(`HTTP ${response.status}`);
-			const blob = await response.blob();
-			console.log(`pixieDownloader: (${num}/${imgObjects.length}) ${obj.name} — ${(blob.size / 1024).toFixed(1)} KB`);
-			albumZip.file(obj.name, blob);
-		} catch (err) {
+
+		const result = await new Promise(resolve => {
+			chrome.runtime.sendMessage({ fetchImage: true, url: obj.url }, resolve);
+		});
+
+		if (result && result.ok) {
+			console.log(`pixieDownloader: (${num}/${imgObjects.length}) ${obj.name} — ${(result.buffer.byteLength / 1024).toFixed(1)} KB`);
+			albumZip.file(obj.name, result.buffer);
+		} else {
 			failed++;
-			console.warn(`pixieDownloader: (${num}/${imgObjects.length}) failed to fetch ${obj.url} — ${err}`);
+			console.warn(`pixieDownloader: (${num}/${imgObjects.length}) failed to fetch ${obj.url} — ${result?.error}`);
 		}
 	}
 
