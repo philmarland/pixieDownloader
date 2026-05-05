@@ -124,7 +124,8 @@ async function zip() {
 
 		if (result && result.ok) {
 			console.log(`pixieDownloader: (${num}/${imgObjects.length}) ${obj.name} — ${(result.buffer.byteLength / 1024).toFixed(1)} KB`);
-			albumZip.file(obj.name, result.buffer);
+			// wrap in Uint8Array to ensure JSZip gets a same-realm typed array
+			albumZip.file(obj.name, new Uint8Array(result.buffer));
 		} else {
 			failed++;
 			console.warn(`pixieDownloader: (${num}/${imgObjects.length}) failed to fetch ${obj.url} — ${result?.error}`);
