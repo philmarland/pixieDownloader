@@ -14,5 +14,6 @@
 			"js": ["lib/jsZip.min.js", "content.js"]
 		}
 	],
-	"action": {}
+	"action": {},
+	"host_permissions": ["https://images.pixieset.com/*"]
 }

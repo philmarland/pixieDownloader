@@ -48,6 +48,7 @@ function init() {
 
 		if (autoScrolling) {
 			// scroll to the bottom to load all images in the current album
+			setStatus('Scrolling...', '#45b0e6');
 			let lastScrollHeight = 0;
 			function autoScroll() {
 				let scrollHeight = document.documentElement.scrollHeight;
@@ -75,7 +76,7 @@ function setStatus(text, color = null) {
 }
 
 
-function zip() {
+async function zip() {
 	setStatus('Preparing...', '#45b0e6');
 
 	// locate all <img> elements
@@ -84,7 +85,6 @@ function zip() {
 
 	const re_imgUrl = /(.*images.pixieset.*-)(.*)(.jpg)/;
 
-	// JSON data structure to store { URL, filename, base64 encoding } of each image
 	let imgObjects = [];
 
 	for (let i = 0; i < imgElements.length; i++) {
@@ -98,43 +98,60 @@ function zip() {
 			// obtain original filename
 			const origName = currEle.alt;
 
-			imgObjects.push({ url: newUrl, name: origName, base64: '' });
+			imgObjects.push({ url: newUrl, name: origName });
 		}
 	}
+
+	console.log(`pixieDownloader: found ${imgObjects.length} images`);
 
 	// set default ZIP filename — combination of window title and current album
 	let albumName = window.location.pathname.split('/');
 	albumName = albumName.pop() || albumName.pop();
 	let zipName = document.title + ' - ' + albumName;
 
-	setStatus('Downloading...', '#eca142');
-
-	chrome.runtime.sendMessage(
-		{ array: imgObjects },
-		array => {
-			// add all images to ZIP
-			array.forEach(obj => albumZip.file(
-				obj.name,
-				obj.base64,
-				{ base64: true }
-			));
-
-			// serve ZIP to user
-			download(albumZip, zipName, true);
+	// fetch each image as a blob and add directly to the ZIP (no base64 conversion)
+	let failed = 0;
+	for (let i = 0; i < imgObjects.length; i++) {
+		const obj = imgObjects[i];
+		const num = i + 1;
+		setStatus(`Photo ${num} / ${imgObjects.length}`, '#eca142');
+		console.log(`pixieDownloader: (${num}/${imgObjects.length}) fetching ${obj.url}`);
+		try {
+			const response = await fetch(obj.url);
+			if (!response.ok) throw new Error(`HTTP ${response.status}`);
+			const blob = await response.blob();
+			console.log(`pixieDownloader: (${num}/${imgObjects.length}) ${obj.name} — ${(blob.size / 1024).toFixed(1)} KB`);
+			albumZip.file(obj.name, blob);
+		} catch (err) {
+			failed++;
+			console.warn(`pixieDownloader: (${num}/${imgObjects.length}) failed to fetch ${obj.url} — ${err}`);
 		}
-	);
+	}
+
+	if (failed > 0) {
+		console.warn(`pixieDownloader: ${failed} image(s) could not be downloaded`);
+	}
+
+	download(albumZip, zipName, true);
 }
 
 
 function download(zip, name, ask) {
-	zip.generateAsync({ type:'blob' }).then(blob => {
+	setStatus('Zipping...', '#45b0e6');
+
+	zip.generateAsync(
+		{ type: 'blob' },
+		metadata => {
+			setStatus(`Zipping ${Math.round(metadata.percent)}%...`, '#45b0e6');
+		}
+	).then(blob => {
 		if (ask) {
 			name = prompt('What should the name of the ZIP file be?', name);
 			if (name === null) {
 				setStatus('Cancelled', '#e71d1d');
 				running = false;
 				return;
-			};
+			}
 		}
 
 		// https://stackoverflow.com/a/9834261
